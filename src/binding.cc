@@ -211,6 +211,9 @@ CFG_OPTIONS
 CFG_OPTIONS_SSL
 #undef X
 
+template <class T>
+using Handle = Local<T>;
+
 struct sql_config {
   char* user;
   char* password;
@@ -1029,9 +1032,10 @@ class Client : public Nan::ObjectWrap {
       if (IS_DEAD_ERRNO(errCode))
         state = STATE_CLOSED;
 
+	  const v8::Local<v8::Context>& curContext = Nan::GetCurrentContext();
       Local<Object> err =
-          Nan::Error(errMsg ? errMsg : mysql_error(&mysql))->ToObject();
-      err->Set(Nan::New<String>(code_symbol), Nan::New<Integer>(errCode));
+          Nan::Error(errMsg ? errMsg : mysql_error(&mysql))->ToObject(curContext).ToLocalChecked();
+      err->Set(curContext, Nan::New<String>(code_symbol), Nan::New<Integer>(errCode));
 
       if (doClose || IS_DEAD_ERRNO(errCode))
         close(IS_DEAD_ERRNO(errCode));
@@ -1062,6 +1066,7 @@ class Client : public Nan::ObjectWrap {
 
       on_resultinfo(fields, n_fields);
 
+	  const v8::Local<v8::Context>& curContext = Nan::GetCurrentContext();
       for (unsigned int f = 0; f < n_fields; ++f) {
         if (cur_row[f] == nullptr)
           field_value = Nan::Null();
@@ -1078,7 +1083,7 @@ class Client : public Nan::ObjectWrap {
             Nan::New<String>(cur_row[f], lengths[f]).ToLocalChecked();
         }
 
-        row->Set(f, field_value);
+        row->Set(curContext, f, field_value);
       }
 
       Local<Value> argv[1] = {
@@ -1118,6 +1123,7 @@ class Client : public Nan::ObjectWrap {
 
       on_resultinfo(fields, n_fields);
 
+	  const v8::Local<v8::Context>& curContext = Nan::GetCurrentContext();
       for (uint64_t i = 0; i < n_rows; ++i) {
         dbrow = mysql_fetch_row(cur_result);
         lengths = mysql_fetch_lengths(cur_result);
@@ -1137,9 +1143,9 @@ class Client : public Nan::ObjectWrap {
             field_value =
               Nan::New<String>(dbrow[f], lengths[f]).ToLocalChecked();
           }
-          row->Set(f, field_value);
+          row->Set(curContext, f, field_value);
         }
-        rows->Set(i, row);
+        rows->Set(curContext, i, row);
       }
 
       Local<Value> argv[1] = {
@@ -1168,6 +1174,7 @@ class Client : public Nan::ObjectWrap {
         else
           columns_v = Nan::Undefined();
 
+		const v8::Local<v8::Context>& curContext = Nan::GetCurrentContext();
         for (unsigned int f = 0; f < n_fields; ++f) {
           field = fields[f];
           if (need_metadata) {
@@ -1183,19 +1190,19 @@ class Client : public Nan::ObjectWrap {
               default:
                 ret = Nan::New<String>(col_unsup_symbol);
             }
-            metadata->Set(m++, Nan::New<String>(field.name).ToLocalChecked());
-            metadata->Set(m++,
+            metadata->Set(curContext, m++, Nan::New<String>(field.name).ToLocalChecked());
+            metadata->Set(curContext, m++,
                           Nan::New<String>(field.org_name).ToLocalChecked());
-            metadata->Set(m++, ret);
-            metadata->Set(m++, Nan::New<Integer>(field.flags));
-            metadata->Set(m++, Nan::New<Integer>(field.charsetnr));
-            metadata->Set(m++, Nan::New<String>(field.db).ToLocalChecked());
-            metadata->Set(m++, Nan::New<String>(field.table).ToLocalChecked());
-            metadata->Set(m++,
+            metadata->Set(curContext, m++, ret);
+            metadata->Set(curContext, m++, Nan::New<Integer>(field.flags));
+            metadata->Set(curContext, m++, Nan::New<Integer>(field.charsetnr));
+            metadata->Set(curContext, m++, Nan::New<String>(field.db).ToLocalChecked());
+            metadata->Set(curContext, m++, Nan::New<String>(field.table).ToLocalChecked());
+            metadata->Set(curContext, m++,
                           Nan::New<String>(field.org_table).ToLocalChecked());
           }
           if (need_columns) {
-            columns->Set(f,
+            columns->Set(curContext, f,
                          Nan::New<String>(field.name,
                                           field.name_length).ToLocalChecked());
           }
@@ -1288,27 +1295,28 @@ class Client : public Nan::ObjectWrap {
         return false;
       }
 
+	  const v8::Local<v8::Context>& curContext = Nan::GetCurrentContext();
 #define X(name)                                                                \
       Local<Value> name##_v =                                                  \
-        cfg->Get(Nan::New<String>(cfg_##name##_symbol));
+        cfg->Get(curContext, Nan::New<String>(cfg_##name##_symbol)).ToLocalChecked();
       CFG_OPTIONS
 #undef X
 
-      if (!user_v->IsString() || user_v->ToString()->Length() == 0)
+      if (!user_v->IsString() || user_v->ToString(curContext).ToLocalChecked()->Length() == 0)
         config.user = nullptr;
       else {
         Nan::Utf8String user_s(user_v);
         config.user = strdup(*user_s);
       }
 
-      if (!password_v->IsString() || password_v->ToString()->Length() == 0)
+      if (!password_v->IsString() || password_v->ToString(curContext).ToLocalChecked()->Length() == 0)
         config.password = nullptr;
       else {
         Nan::Utf8String password_s(password_v);
         config.password = strdup(*password_s);
       }
 
-      if (!host_v->IsString() || host_v->ToString()->Length() == 0)
+      if (!host_v->IsString() || host_v->ToString(curContext).ToLocalChecked()->Length() == 0)
         config.host = nullptr;
       else {
         Nan::Utf8String host_s(host_v);
@@ -1316,14 +1324,14 @@ class Client : public Nan::ObjectWrap {
         mysql_options(&mysql, MYSQL_OPT_PROTOCOL, &PROTOCOL_TCP);
       }
 
-      if (!port_v->IsUint32() || port_v->Uint32Value() == 0)
+      if (!port_v->IsUint32() || port_v->Uint32Value(curContext).FromJust() == 0)
         config.port = 3306;
       else {
-        config.port = port_v->Uint32Value();
+        config.port = port_v->Uint32Value(curContext).FromJust();
         mysql_options(&mysql, MYSQL_OPT_PROTOCOL, &PROTOCOL_TCP);
       }
 
-      if (!unixSocket_v->IsString() || unixSocket_v->ToString()->Length() == 0)
+      if (!unixSocket_v->IsString() || unixSocket_v->ToString(curContext).ToLocalChecked()->Length() == 0)
         config.unixSocket = nullptr;
       else {
         Nan::Utf8String unixSocket_s(unixSocket_v);
@@ -1331,7 +1339,7 @@ class Client : public Nan::ObjectWrap {
         mysql_options(&mysql, MYSQL_OPT_PROTOCOL, &PROTOCOL_SOCKET);
       }
 
-      if (protocol_v->IsString() && protocol_v->ToString()->Length() > 0) {
+      if (protocol_v->IsString() && protocol_v->ToString(curContext).ToLocalChecked()->Length() > 0) {
         Nan::Utf8String protocol_s(protocol_v);
         const char* protocol = *protocol_s;
         if (strcasecmp(protocol, "tcp") == 0)
@@ -1346,84 +1354,85 @@ class Client : public Nan::ObjectWrap {
           mysql_options(&mysql, MYSQL_OPT_PROTOCOL, &PROTOCOL_DEFAULT);
       }
 
-      if (db_v->IsString() && db_v->ToString()->Length() > 0) {
+      if (db_v->IsString() && db_v->ToString(curContext).ToLocalChecked()->Length() > 0) {
         Nan::Utf8String db_s(db_v);
         config.db = strdup(*db_s);
       }
 
       unsigned int timeout = 10;
-      if (connTimeout_v->IsUint32() && connTimeout_v->Uint32Value() > 0)
-        timeout = connTimeout_v->Uint32Value();
+      if (connTimeout_v->IsUint32() && connTimeout_v->Uint32Value(curContext).FromJust() > 0)
+        timeout = connTimeout_v->Uint32Value(curContext).FromJust();
       mysql_options(&mysql, MYSQL_OPT_CONNECT_TIMEOUT, &timeout);
 
-      if (!secureAuth_v->IsBoolean() || secureAuth_v->BooleanValue())
+	  v8::Isolate* pIsolate = v8::Isolate::GetCurrent();
+      if (!secureAuth_v->IsBoolean() || secureAuth_v->BooleanValue(pIsolate))
         mysql_options(&mysql, MYSQL_SECURE_AUTH, &MY_BOOL_TRUE);
       else
         mysql_options(&mysql, MYSQL_SECURE_AUTH, &MY_BOOL_FALSE);
 
-      if (multiStatements_v->IsBoolean() && multiStatements_v->BooleanValue())
+      if (multiStatements_v->IsBoolean() && multiStatements_v->BooleanValue(pIsolate))
         config.client_opts |= CLIENT_MULTI_STATEMENTS;
 
-      if (compress_v->IsBoolean() && compress_v->BooleanValue())
+      if (compress_v->IsBoolean() && compress_v->BooleanValue(pIsolate))
         mysql_options(&mysql, MYSQL_OPT_COMPRESS, 0);
 
-      if (local_infile_v->IsBoolean() && local_infile_v->BooleanValue())
+      if (local_infile_v->IsBoolean() && local_infile_v->BooleanValue(pIsolate))
         mysql_options(&mysql, MYSQL_OPT_LOCAL_INFILE, &MY_BOOL_TRUE);
 
       if (read_default_file_v->IsString()
-          && read_default_file_v->ToString()->Length() > 0) {
+          && read_default_file_v->ToString(curContext).ToLocalChecked()->Length() > 0) {
         Nan::Utf8String def_file_s(read_default_file_v);
         mysql_options(&mysql, MYSQL_READ_DEFAULT_FILE,
                       *def_file_s);
       }
 
       if (read_default_group_v->IsString()
-          && read_default_group_v->ToString()->Length() > 0) {
+          && read_default_group_v->ToString(curContext).ToLocalChecked()->Length() > 0) {
         Nan::Utf8String def_grp_s(read_default_group_v);
         mysql_options(&mysql, MYSQL_READ_DEFAULT_GROUP,
                       *def_grp_s);
       }
 
       if (tcpKeepalive_v->IsUint32())
-        config.tcpka = tcpKeepalive_v->Uint32Value();
+        config.tcpka = tcpKeepalive_v->Uint32Value(curContext).FromJust();
       if (tcpKeepaliveCnt_v->IsUint32())
-        config.tcpkaCnt = tcpKeepaliveCnt_v->Uint32Value();
+        config.tcpkaCnt = tcpKeepaliveCnt_v->Uint32Value(curContext).FromJust();
       if (tcpKeepaliveIntvl_v->IsUint32())
-        config.tcpkaIntvl = tcpKeepaliveIntvl_v->Uint32Value();
+        config.tcpkaIntvl = tcpKeepaliveIntvl_v->Uint32Value(curContext).FromJust();
 
-      if (charset_v->IsString() && charset_v->ToString()->Length() > 0) {
+      if (charset_v->IsString() && charset_v->ToString(curContext).ToLocalChecked()->Length() > 0) {
         Nan::Utf8String charset_s(charset_v);
         config.charset = strdup(*charset_s);
         mysql_options(&mysql, MYSQL_SET_CHARSET_NAME, config.charset); 
       }
 
-      if (ssl_v->IsObject() || (ssl_v->IsBoolean() && ssl_v->BooleanValue())) {
+      if (ssl_v->IsObject() || (ssl_v->IsBoolean() && ssl_v->BooleanValue(pIsolate))) {
         bool use_default_ciphers = true;
         if (!ssl_v->IsBoolean()) {
-          Local<Object> ssl = ssl_v->ToObject();
+          Local<Object> ssl = ssl_v->ToObject(curContext).ToLocalChecked();
 #define X(name)                                                                \
           Local<Value> name##_v =                                              \
-              ssl->Get(Nan::New<String>(cfg_##name##_symbol));
+              ssl->Get(curContext, Nan::New<String>(cfg_##name##_symbol)).ToLocalChecked();
           CFG_OPTIONS_SSL
 #undef X
 
-          if (key_v->IsString() && key_v->ToString()->Length() > 0) {
+          if (key_v->IsString() && key_v->ToString(curContext).ToLocalChecked()->Length() > 0) {
             Nan::Utf8String key_s(key_v);
             config.ssl_key = strdup(*key_s);
           }
-          if (cert_v->IsString() && cert_v->ToString()->Length() > 0) {
+          if (cert_v->IsString() && cert_v->ToString(curContext).ToLocalChecked()->Length() > 0) {
             Nan::Utf8String cert_s(cert_v);
             config.ssl_cert = strdup(*cert_s);
           }
-          if (ca_v->IsString() && ca_v->ToString()->Length() > 0) {
+          if (ca_v->IsString() && ca_v->ToString(curContext).ToLocalChecked()->Length() > 0) {
             Nan::Utf8String ca_s(ca_v);
             config.ssl_ca = strdup(*ca_s);
           }
-          if (capath_v->IsString() && capath_v->ToString()->Length() > 0) {
+          if (capath_v->IsString() && capath_v->ToString(curContext).ToLocalChecked()->Length() > 0) {
             Nan::Utf8String capath_s(capath_v);
             config.ssl_capath = strdup(*capath_s);
           }
-          if (cipher_v->IsString() && cipher_v->ToString()->Length() > 0) {
+          if (cipher_v->IsString() && cipher_v->ToString(curContext).ToLocalChecked()->Length() > 0) {
             Nan::Utf8String cipher_s(cipher_v);
             config.ssl_cipher = strdup(*cipher_s);
             use_default_ciphers = false;
@@ -1431,7 +1440,7 @@ class Client : public Nan::ObjectWrap {
 
           mysql_options(&mysql, MYSQL_OPT_SSL_VERIFY_SERVER_CERT,
                         (rejectUnauthorized_v->IsBoolean()
-                         && rejectUnauthorized_v->BooleanValue()
+                         && rejectUnauthorized_v->BooleanValue(pIsolate)
                          ? &MY_BOOL_TRUE
                          : &MY_BOOL_FALSE));
         }
@@ -1462,18 +1471,19 @@ class Client : public Nan::ObjectWrap {
       if (info.Length() == 0 || !info[0]->IsObject())
         return Nan::ThrowTypeError("Missing setup object");
 
-      Local<Object> cfg = info[0]->ToObject();
+	  const v8::Local<v8::Context>& curContext = Nan::GetCurrentContext();
+      Local<Object> cfg = info[0]->ToObject(curContext).ToLocalChecked();
 #define X(name)                                                                \
       Local<Value> v_on##name =                                                \
-        cfg->Get(Nan::New<String>(ev_##name##_symbol));                        \
+        cfg->Get(curContext, Nan::New<String>(ev_##name##_symbol)).ToLocalChecked();                        \
       if (!v_on##name->IsFunction())                                           \
         return Nan::ThrowTypeError("Missing on" #name " handler");
       EVENT_NAMES
 #undef X
       Local<Value> context_v =
-        cfg->Get(Nan::New<String>(context_symbol));
+        cfg->Get(curContext, Nan::New<String>(context_symbol)).ToLocalChecked();
       Local<Value> conncfg_v =
-        cfg->Get(Nan::New<String>(conncfg_symbol));
+        cfg->Get(curContext, Nan::New<String>(conncfg_symbol)).ToLocalChecked();
 
       Client* obj = new Client();
 
@@ -1482,11 +1492,11 @@ class Client : public Nan::ObjectWrap {
       EVENT_NAMES
 #undef X
       if (context_v->IsObject())
-        obj->context.Reset(context_v->ToObject());
+        obj->context.Reset(context_v->ToObject(curContext).ToLocalChecked());
       else
         obj->context.Reset(Nan::GetCurrentContext()->Global());
       if (conncfg_v->IsObject())
-        obj->apply_config(conncfg_v->ToObject());
+        obj->apply_config(conncfg_v->ToObject(curContext).ToLocalChecked());
       obj->Wrap(info.This());
 
       info.GetReturnValue().Set(info.This());
@@ -1497,7 +1507,7 @@ class Client : public Nan::ObjectWrap {
       DBG_LOG("[%lu] clientBinding->setConfig()\n", obj->threadId);
 
       if (info.Length() > 0 && info[0]->IsObject()) {
-        Local<Object> cfg = info[0]->ToObject();
+        Local<Object> cfg = info[0]->ToObject(Nan::GetCurrentContext()).ToLocalChecked();
         obj->apply_config(cfg);
       }
     }
@@ -1510,7 +1520,7 @@ class Client : public Nan::ObjectWrap {
         return Nan::ThrowError("Already connected");
 
       if (info.Length() > 0 && info[0]->IsObject()) {
-        Local<Object> cfg = info[0]->ToObject();
+        Local<Object> cfg = info[0]->ToObject(Nan::GetCurrentContext()).ToLocalChecked();
         if (!obj->apply_config(cfg))
           return;
       } else if (!obj->init()) {
@@ -1589,11 +1599,12 @@ class Client : public Nan::ObjectWrap {
       if (!info[3]->IsBoolean())
         return Nan::ThrowTypeError("buffered argument must be a boolean");
 
+	  v8::Isolate* pIsolate = v8::Isolate::GetCurrent();
       //if (info[0]->IsString()) {
         obj->query(info[0],
-                   info[1]->BooleanValue(),
-                   info[2]->BooleanValue(),
-                   info[3]->BooleanValue());
+                   info[1]->BooleanValue(pIsolate),
+                   info[2]->BooleanValue(pIsolate),
+                   info[3]->BooleanValue(pIsolate));
       /*} else {
         Local<Object> stmt_obj = info[0]->ToObject();
         Statement* stmt = Nan::ObjectWrap::Unwrap<Statement>(stmt_obj);
@@ -1688,7 +1699,8 @@ class Client : public Nan::ObjectWrap {
       Nan::SetPrototypeMethod(tpl, "serverVersion", ServerVersion);
       Nan::SetPrototypeMethod(tpl, "lastInsertId", LastInsertId);
 
-      target->Set(name, tpl->GetFunction());
+	  const v8::Local<v8::Context>& curContext = Nan::GetCurrentContext();
+      target->Set(curContext, name, tpl->GetFunction(curContext).ToLocalChecked());
     }
 };
 
@@ -1827,10 +1839,11 @@ extern "C" {
   void init(Handle<Object> target) {
     Client::Initialize(target);
     //Statement::Initialize(target);
-    target->Set(Nan::New<String>("escape").ToLocalChecked(),
-                Nan::New<FunctionTemplate>(Escape)->GetFunction());
-    target->Set(Nan::New<String>("version").ToLocalChecked(),
-                Nan::New<FunctionTemplate>(Version)->GetFunction());
+	const v8::Local<v8::Context>& curContext = Nan::GetCurrentContext();
+    target->Set(curContext, Nan::New<String>("escape").ToLocalChecked(),
+                Nan::New<FunctionTemplate>(Escape)->GetFunction(curContext).ToLocalChecked());
+    target->Set(curContext, Nan::New<String>("version").ToLocalChecked(),
+                Nan::New<FunctionTemplate>(Version)->GetFunction(curContext).ToLocalChecked());
   }
 
   NODE_MODULE(sqlclient, init);
